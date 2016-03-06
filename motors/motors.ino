@@ -6,7 +6,7 @@
 // Need the Servo library
 #include <Servo.h>
 
-#define MOTOR_PIN 10
+#define MOTOR_PIN 9
 // This is our motor.
 Servo myMotor;
 
