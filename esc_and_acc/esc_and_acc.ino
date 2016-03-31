@@ -36,26 +36,31 @@ Servo esc1;
  * ========================================================================= */
 
 // PID Global Variables/Constants
-#define KP 8
+#define KP 0.125
 #define KI 0
 #define KD 0
 #define TARGET_ROLL 0
-#define MAX_TIME 1000
+#define MAX_TIME 50
+#define BASE_SPEED 31
+int escVal = BASE_SPEED;
+long sum = 0;
 int time = 0;
 int integral_error = 0;
-int error_stack[10];
+int error_list[MAX_TIME];
+int value_list[MAX_TIME];
+int value_list_top = 0;
 int stack_top = -1;
 int stack_length = 0;
 #define STACK_MAX_SIZE 10
 
-#define BASE_SPEED 31
+
 
 #define OUTPUT_READABLE_YAWPITCHROLL
 #define LED_PIN 13 // (Arduino is 13, Teensy is 11, Teensy++ is 6)
 #define ESC1_PIN 9
 #define ESC_LOW_VAL 700
 //#define ESC_LOW_VAL 40
-int escVal = 80;
+
 #define ESC_MAX 120
 #define ESC_MIN 60
 
@@ -92,12 +97,10 @@ void dmpDataReady() {
   mpuInterrupt = true;
 }
 
-int get_derivative(int h);
-void pushToStack(int val);
-int evaluatePID (int kp, int ki, int kd,
+int evaluatePID (float kp, float ki, float kd,
                  int error,
                  int integral_error,
-                 int derivative_error);
+                 float derivative_error);
 int evaluateError(int expected, int signal);
 
 // ================================================================
@@ -105,6 +108,13 @@ int evaluateError(int expected, int signal);
 // ================================================================
 
 void setup() {
+ 
+  for(int i = 0; i < MAX_TIME; i++)
+  {
+    value_list[i] = BASE_SPEED;
+    error_list[i] = 0;
+  }
+  
   esc1.attach(ESC1_PIN);
   delay(10);
   esc1.write(ESC_LOW_VAL);
@@ -239,31 +249,42 @@ void loop() {
     int roll = ypr[2] * 180 / M_PI;
     int targetRoll = TARGET_ROLL;
     int error_val = evaluateError(targetRoll, roll);
-
-    if (time == 0) {
-      integral_error = error_val;
-    } else {
-      integral_error += error_val;
+    
+    int integral_error = 0;
+    error_list[time] = error_val;
+    int average_val = 0;
+    for(int i = 0; i < MAX_TIME; i++) {
+      integral_error += error_list[i];
+      average_val += value_list[i];
     }
-    pushToStack(error_val);
-    int derivative_error = get_derivative(1);
-    int control_val = evaluatePID(KP, KI, KD, error_val, integral_error, derivative_error);
+    average_val /= MAX_TIME;
+    //int derivative_error = get_derivative(1);
+    int derivative_error = 0;
+    float ki = KP / MAX_TIME;
+    //float ki = 0;
+    int control_val = evaluatePID(KP, ki, KD, error_val, integral_error, derivative_error);
 
-    int sv = control_val + BASE_SPEED;
-    sv = (sv > 180) ? 180 : sv;
-    sv = (sv < 31) ? 31 : sv;
-
-
+    escVal = control_val + average_val;
+    escVal = (escVal > 180) ? 180 : escVal;
+    escVal = (escVal < 31) ? 31 : escVal;
+    value_list[time] = escVal;
     time++;
     time %= MAX_TIME;
-
-    esc1.write(sv);
+    
+    //int value_list[10];
+    //int value_list_length = 0;
+    value_list[time] = escVal;
+    esc1.write(escVal);
     Serial.print("error: \t");
     Serial.println(error_val);
-    Serial.print("integral: \t");
-    Serial.println(integral_error);
+    //Serial.print("integral: \t");
+    //Serial.println(integral_error);
+    Serial.print("control_val: \t");
+    Serial.println(control_val);
+    Serial.print("averageVal: \t");
+    Serial.println(average_val);
     Serial.print("esc Value: \t");
-    Serial.println(sv);
+    Serial.println(escVal);
     // blink LED to indicate activity
     blinkState = !blinkState;
     digitalWrite(LED_PIN, blinkState);
@@ -274,39 +295,10 @@ int evaluateError(int expected, int signal)
 {
   return expected - signal;
 }
-int evaluatePID (int kp, int ki, int kd,
+int evaluatePID (float kp, float ki, float kd,
                  int error,
                  int integral_error,
-                 int derivative_error)
+                 float derivative_error)
 {
   return kp * error + ki * integral_error + kd * derivative_error;
-}
-
-void pushToStack(int val)
-{
-  stack_top++;
-  error_stack[stack_top % STACK_MAX_SIZE] = val;
-  if (stack_length < STACK_MAX_SIZE) {
-    stack_length ++;
-  }
-}
-
-int get_derivative(int h)
-{
-  int t_i, t_i1, t_i2 = 0;
-
-  int dt = (h == 0) ? 1 : h;
-
-  if (stack_top < 0)
-    return 0;
-
-  t_i = error_stack[stack_top];
-  t_i1 = error_stack[(stack_top + STACK_MAX_SIZE - 1) % STACK_MAX_SIZE];
-  t_i2 = error_stack[(stack_top + STACK_MAX_SIZE - 2) % STACK_MAX_SIZE];
-  if (stack_length <= 1)
-    return 0;
-  if (stack_length <= 2)
-    return (t_i - t_i1) / dt;
-
-  return (t_i - 2 * t_i1 + t_i2) / dt;
 }
