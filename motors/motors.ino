@@ -1,6 +1,7 @@
 /*
 *  This code is in the public domain.
 *  (Do whatever you want with it.)
+*  min-56 deg
 */
 
 // Need the Servo library
@@ -21,8 +22,8 @@ void setup()
   // Put the motor to Arduino pin #9
   myMotor.attach(MOTOR_PIN);
   delay(10);
- // myMotor.write(700);
-  myMotor.write(80);
+  myMotor.write(40);
+  //myMotor.write(90);
   //delay(1000);
   // Required for I/O from Serial monitor
   Serial.begin(9600);
@@ -82,6 +83,7 @@ void loop()
        // value is between 0 and 180
        Serial.println("Value is between 0 and 180");
        // Write to Servo
+       //myMotor.writeMicroseconds(val);
        myMotor.write(val);
      }
      // The value is not between 0 and 180.

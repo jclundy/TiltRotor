@@ -6,28 +6,40 @@
 // Need the Servo library
 #include <Servo.h>
 
+#define GREEN_PIN 9
+#define GREEN_INIT 40
+//note 40 arms green
+#define BLACK_PIN 10
+#define BLACK_INIT 40
 // This is our motor.
-Servo myMotor;
-
+Servo greenMotor;
+Servo blackMotor;
 // This is the final output
 // written to the motor.
 String incomingString;
 
 
 // Set everything up
+int count = 0;
 void setup()
 {
   // Put the motor to Arduino pin #9
-  myMotor.attach(9);
+  greenMotor.attach(GREEN_PIN);
+  blackMotor.attach(BLACK_PIN);
   delay(10);
-  myMotor.write(700);
+  blackMotor.write(BLACK_INIT);
+  delay(10);
+  greenMotor.write(GREEN_INIT);
   delay(1000);
   // Required for I/O from Serial monitor
   Serial.begin(9600);
   // Print a startup message
-  Serial.println("initializing");
+   if(count % 2 == 0) {
+    Serial.println("Write to Black Rotor");
+  } else {
+    Serial.println("Write to Green Rotor");
+  }
 }
-
 
 void loop()
 {
@@ -80,7 +92,19 @@ void loop()
        // value is between 0 and 180
        Serial.println("Value is between 0 and 180");
        // Write to Servo
-       myMotor.write(val);
+       if(count % 2 == 0) {
+        Serial.println("Writing to Black Rotor");
+        blackMotor.write(val);
+      } else {
+        Serial.println("Writing to Green Rotor");
+        greenMotor.write(val);
+      }
+        count++;
+        if(count % 2 == 0) {
+          Serial.println("Write to Black Rotor");
+        } else {
+          Serial.println("Write to Green Rotor");
+        }
      }
      // The value is not between 0 and 180.
      // We do not want write this value to

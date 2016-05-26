@@ -23,6 +23,7 @@ MPU6050 mpu;
 //note 40 arms green
 #define BLACK_PIN 9
 #define BLACK_INIT 40
+#define ROLL_OFFSET 5
 // This is our motor.
 Servo greenMotor;
 Servo blackMotor;
@@ -30,11 +31,39 @@ bool stopped = true;
 String incomingString;
 
 #define STOP_ANGLE 20
-
 bool blinkState = false;
 
 
+/*================== PID Global Variables/Constants ========================*/
+#define KP 1
 
+#define KI 0
+#define KD 0
+#define TARGET_ROLL 0
+#define MAX_TIME 100
+
+
+#define MAX_MICROSECONDS 1744
+#define BASE_SPEED_GREEN_MICROSECONDS 1320
+#define BASE_SPEED_BLACK_MICROSECONDS 1500
+#define MIN_MICROSECONDS 1144
+
+long sum = 0;
+int time = 0;
+int integral_error = 0;
+int derivative_error = 0;
+int targetRoll = TARGET_ROLL;
+int error_list[MAX_TIME] = {0};
+int value_list_top = 0;
+int stack_top = -1;
+int stack_length = 0;
+#define STACK_MAX_SIZE 10
+
+int evaluatePID (float kp, float ki, float kd,
+                 int error,
+                 int integral_error,
+                 float derivative_error);
+int evaluateError(int expected, int signal);
 /* =========================================================================
    NOTE: In addition to connection 3.3v, GND, SDA, and SCL, this sketch
    depends on the MPU-6050's INT pin being connected to the Arduino's
@@ -52,27 +81,6 @@ bool blinkState = false;
    http://arduino.cc/forum/index.php/topic,109987.0.html
    http://code.google.com/p/arduino/issues/detail?id=958
  * ========================================================================= */
-
-// PID Global Variables/Constants
-#define KP 0.125
-#define KI 0
-#define KD 0
-#define TARGET_ROLL 0
-#define MAX_TIME 50
-#define BASE_SPEED_MICROSECONDS 1144
-
-int escVal = BASE_SPEED_MICROSECONDS;
-long sum = 0;
-int time = 0;
-int integral_error = 0;
-int error_list[MAX_TIME];
-int value_list[MAX_TIME];
-int value_list_top = 0;
-int stack_top = -1;
-int stack_length = 0;
-#define STACK_MAX_SIZE 10
-
-
 
 #define OUTPUT_READABLE_YAWPITCHROLL
 
@@ -244,7 +252,7 @@ void loop() {
     //    Serial.print("\t");
     //    Serial.println(ypr[2] * 180 / M_PI);
     // interested in r
-
+    
     if (Serial.available() > 0)
     {
       // read the value
@@ -282,16 +290,54 @@ void loop() {
         {
           greenMotor.write(STOP_ANGLE);
           blackMotor.write(STOP_ANGLE);
+          integral_error = 0;
+          time = 0;
           Serial.println("motor stopped");
         }
       }
     }
     if (!stopped)
     {
-      greenMotor.writeMicroseconds(escVal);
-      blackMotor.writeMicroseconds(escVal);
-      Serial.println("writing to motor");
+      int roll = ypr[2] * 180 / M_PI;
+      int error_val = evaluateError(targetRoll, roll);
+      integral_error = 0;
+      error_list[time] = error_val;
+      for(int i = 0; i < MAX_TIME; i++) {
+        integral_error += error_list[i];
+      }
+      derivative_error = 0;
+      
+      float ki = KI / MAX_TIME;
+      int control_val = evaluatePID(KP, ki, KD, error_val, integral_error, derivative_error);
+      int greenVal = min(max(BASE_SPEED_GREEN_MICROSECONDS - control_val, MIN_MICROSECONDS), MAX_MICROSECONDS);
+      int blackVal = min(max(BASE_SPEED_BLACK_MICROSECONDS + control_val, MIN_MICROSECONDS), MAX_MICROSECONDS);
+      greenMotor.writeMicroseconds(greenVal);
+      blackMotor.writeMicroseconds(blackVal);
+      Serial.print("error : \t");
+      Serial.print(error_val);
+      Serial.print("\t");
+      Serial.print("integral error \t");
+      Serial.print(integral_error);
+      Serial.print("\t");
+      Serial.print("black: \t");
+      Serial.print(blackVal);
+      Serial.print("green: \t");
+      Serial.println(greenVal);
+
+      time++;
+      time %= MAX_TIME;
     }
   }
 }
 
+int evaluateError(int expected, int signal)
+{
+  return expected - signal;
+}
+int evaluatePID (float kp, float ki, float kd,
+                 int error,
+                 int integral_error,
+                 float derivative_error)
+{
+  return kp * error + ki * integral_error + kd * derivative_error;
+}
